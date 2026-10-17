@@ -38,16 +38,24 @@ LIVE_BLOCKS = [
 # community map), confirmed against live capture. reg -> (key, name, unit, class, scale).
 # NOTE: PV power and grid CT live at 39xxx on 1.33+ (NOT readable via this tunnel);
 # solar_power and grid_power are resolved during the correlation session.
+# Confirmed against the inverter console (video correlation at 100% SoC):
+#   console "Grid" page: Pout=0x7920, Pgrid=0x7926, Pgen=0x7927 (values in W)
+#   console "Battery" page: V=0x792c, I=0x792d, P=0x792e
+#   console "System" page: SoC=0x7930 (scale 1), "Power"=0x7920
+# reg -> (key, name, unit, device_class, scale)
 KNOWN_HOLDING = {
-    0x791E: ("grid_voltage", "Grid Voltage", "V", "voltage", 0.1),         # 31006
-    0x7920: ("inverter_power", "Inverter Power", "kW", "power", 0.001),     # 31008 S_WORD
-    0x7928: ("load_power", "Load Power", "kW", "power", 0.001),             # 31016 S_WORD (verify)
-    0x792C: ("battery_voltage", "Battery Voltage", "V", "voltage", 0.1),   # 31020
-    0x792D: ("battery_current", "Battery Current", "A", "current", 0.1),   # 31021 S_WORD
-    0x792E: ("battery_power", "Battery Power", "kW", "power", 0.001),       # 31022 S_WORD neg=charge
-    0x7930: ("battery_soc", "Battery SoC", "%", "battery", 1),             # 31024 (scale verify: 1 vs 0.1)
-    0x7931: ("battery_temperature", "Battery Temperature", "°C", "temperature", 0.1),  # 31025 S_WORD
-    0x7932: ("grid_frequency", "Grid Frequency", "Hz", "frequency", 0.1),  # 31026 (candidate)
+    0x791E: ("grid_voltage", "Grid Voltage", "V", "voltage", 0.1),          # 31006
+    0x7920: ("inverter_power", "Inverter Power", "kW", "power", 0.001),      # 31008 Pout
+    0x7926: ("grid_power", "Grid Power", "kW", "power", 0.001),              # 31014 Pgrid, + = import
+    0x7927: ("generation_power", "Generation Power", "kW", "power", 0.001),  # 31015 Pgen
+    0x792C: ("battery_voltage", "Battery Voltage", "V", "voltage", 0.1),     # 31020
+    0x792D: ("battery_current", "Battery Current", "A", "current", 0.1),     # 31021 + = discharge
+    0x792E: ("battery_power", "Battery Power", "kW", "power", 0.001),         # 31022 - = charge
+    0x7930: ("battery_soc", "Battery SoC", "%", "battery", 1),              # 31024
+    0x7932: ("grid_frequency", "Grid Frequency", "Hz", "frequency", 0.1),    # 31026
+    # TODO (needs daytime / derivation): solar_power (PV ~0 at capture),
+    # load_power (no console register — derive: load = generation + grid_import - feedin),
+    # battery_temperature (register not yet identified).
 }
 
 
