@@ -65,24 +65,29 @@ Note: blocking the inverter's internet may affect grid‑compliance features
 
 ## Entities
 
-Confirmed live sensors (FoxESS KH, 1.33+ firmware; func-03 holding registers),
-correlated against the inverter console:
+All correlated against the inverter console and foxess-ha.
 
-- `battery_soc` (%), `battery_power` (kW, negative = charging), `battery_voltage`
-  (V), `battery_current` (A)
-- `grid_power` (kW, Pgrid, + = import), `generation_power` (kW, Pgen),
-  `inverter_power` (kW, Pout), `grid_voltage` (V), `grid_frequency` (Hz)
+**Live power (kW):** `solar_power` (AC-coupled CT), `grid_power` (+export/−import),
+`inverter_power`, `battery_power` (−charge/+discharge), plus derived
+`grid_consumption_power`, `feedin_power`, `load_power`, `battery_charge_power`,
+`battery_discharge_power`.
 
-Still being resolved:
+**Battery & grid:** `battery_soc` (%), `battery_voltage`, `battery_current`,
+`grid_voltage`, `grid_frequency`.
 
-- `solar_power` (PV; confirm register in daylight or derive), `load_power`
-  (no console register — derived as generation + grid_import − feed-in),
-  `battery_temperature`, and cumulative kWh energy totals (derive via HA
-  integration of the power sensors).
+**Daily energy (kWh, reset at midnight):** `grid_consumption` (= the input to
+electricity-cost calcs), `feedin`, `battery_charge`, `battery_discharge` — read
+straight from the inverter's own daily counters (register 0x7D0E etc.), so they
+match the cloud exactly.
 
 Raw `r7918…r7957` register sensors (disabled by default, *diagnostic*) are also
-exposed — enable them and watch HA history while you change load/solar to confirm
-any remaining mappings.
+exposed for future mapping.
+
+### Migrating from the cloud `foxess-ha` integration
+
+To keep existing dashboards/automations working, once you remove `foxess-ha`
+rename these to adopt its entity_ids — notably `sensor.grid_consumption` →
+`sensor.foxess_grid_consumption` (the electricity-cost chain's only dependency).
 
 ## Roadmap
 

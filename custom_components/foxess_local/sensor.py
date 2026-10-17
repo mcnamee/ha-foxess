@@ -11,17 +11,28 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN, RAW_REG_END, RAW_REG_START, SIGNAL_UPDATE
 from .protocol import KNOWN_HOLDING
 
-# device_class -> default unit already set per register in KNOWN_HOLDING
+# Derived power sensors (computed in protocol.derive_virtual):
+# key -> (name, unit, device_class)
+DERIVED_SENSORS = {
+    "grid_consumption_power": ("Grid Consumption Power", "kW", "power"),
+    "feedin_power": ("Feed-in Power", "kW", "power"),
+    "load_power": ("Load Power", "kW", "power"),
+    "battery_charge_power": ("Battery Charge Power", "kW", "power"),
+    "battery_discharge_power": ("Battery Discharge Power", "kW", "power"),
+}
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     entities: list[SensorEntity] = []
-    # labelled sensors
+    # labelled register sensors
     for _reg, (key, name, unit, dclass, _scale) in KNOWN_HOLDING.items():
-        entities.append(FoxessSensor(key, name, unit, dclass, diagnostic=False))
-    # raw register sensors for labelling in HA history
+        entities.append(FoxessSensor(key, name, unit, dclass))
+    # derived power sensors
+    for key, (name, unit, dclass) in DERIVED_SENSORS.items():
+        entities.append(FoxessSensor(key, name, unit, dclass))
+    # raw register sensors for diagnostics
     for reg in range(RAW_REG_START, RAW_REG_END + 1):
         key = f"r{reg:04x}"
         entities.append(FoxessSensor(key, key, None, None, diagnostic=True))
@@ -31,14 +42,18 @@ async def async_setup_entry(
 class FoxessSensor(SensorEntity):
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, key, name, unit, device_class, diagnostic):
+    def __init__(self, key, name, unit, device_class, diagnostic=False):
         self._key = key
         self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
+        # daily energy counters accumulate then reset at midnight
+        self._attr_state_class = (
+            SensorStateClass.TOTAL_INCREASING if device_class == "energy"
+            else SensorStateClass.MEASUREMENT
+        )
         if diagnostic:
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
             self._attr_entity_registry_enabled_default = False

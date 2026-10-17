@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DEFAULT_PORT, DOMAIN, SIGNAL_UPDATE
+from .protocol import derive_virtual
 from .server import FoxessServer, ensure_cert
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     def update_cb(values: dict) -> None:
         store.update(values)
+        store.update(derive_virtual(store))  # grid_consumption_power, load_power, etc.
         async_dispatcher_send(hass, SIGNAL_UPDATE, store)
 
     server = FoxessServer(port, cert_path, key_path, update_cb)

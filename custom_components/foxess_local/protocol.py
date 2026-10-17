@@ -28,34 +28,33 @@ DATA_END = 0xF7
 # also read for cross-checking.
 LIVE_BASE = 0x7918
 LIVE_BLOCKS = [
-    (0x03, 0x7918, 0x10),  # 31000-31015
+    (0x03, 0x7918, 0x10),  # 31000-31015  real-time power/voltage block
     (0x03, 0x7928, 0x10),  # 31016-31031
     (0x03, 0x7938, 0x10),  # 31032-31047
-    (0x03, 0x7948, 0x10),  # 31048-31063
+    (0x03, 0x7D00, 0x10),  # 32000-32015  daily energy counters (kWh, ×0.1)
 ]
 
-# Holding registers for a FoxESS KH on 1.33+ firmware (nathanmarlor/foxess_modbus
-# community map), confirmed against live capture. reg -> (key, name, unit, class, scale).
-# NOTE: PV power and grid CT live at 39xxx on 1.33+ (NOT readable via this tunnel);
-# solar_power and grid_power are resolved during the correlation session.
-# Confirmed against the inverter console (video correlation at 100% SoC):
-#   console "Grid" page: Pout=0x7920, Pgrid=0x7926, Pgen=0x7927 (values in W)
-#   console "Battery" page: V=0x792c, I=0x792d, P=0x792e
-#   console "System" page: SoC=0x7930 (scale 1), "Power"=0x7920
+# Holding registers for this FoxESS KH, all CONFIRMED against the inverter console
+# and foxess-ha (power block correlated live; energy block matched to daily totals).
+# Note the user's solar is AC-coupled (DC PV reads 0); "solar_power"/0x7927 is the
+# CT/meter2 reading. Grid power 0x7926 is signed: - = import, + = export (feed-in).
 # reg -> (key, name, unit, device_class, scale)
 KNOWN_HOLDING = {
+    # --- real-time power block (31xxx) ---
     0x791E: ("grid_voltage", "Grid Voltage", "V", "voltage", 0.1),          # 31006
     0x7920: ("inverter_power", "Inverter Power", "kW", "power", 0.001),      # 31008 Pout
-    0x7926: ("grid_power", "Grid Power", "kW", "power", 0.001),              # 31014 Pgrid, + = import
-    0x7927: ("generation_power", "Generation Power", "kW", "power", 0.001),  # 31015 Pgen
+    0x7926: ("grid_power", "Grid Power", "kW", "power", 0.001),              # 31014 Pgrid −import/+export
+    0x7927: ("solar_power", "Solar Power", "kW", "power", 0.001),            # 31015 Pgen = AC-solar/meter2
     0x792C: ("battery_voltage", "Battery Voltage", "V", "voltage", 0.1),     # 31020
-    0x792D: ("battery_current", "Battery Current", "A", "current", 0.1),     # 31021 + = discharge
-    0x792E: ("battery_power", "Battery Power", "kW", "power", 0.001),         # 31022 - = charge
+    0x792D: ("battery_current", "Battery Current", "A", "current", 0.1),     # 31021 +discharge
+    0x792E: ("battery_power", "Battery Power", "kW", "power", 0.001),         # 31022 −charge/+discharge
     0x7930: ("battery_soc", "Battery SoC", "%", "battery", 1),              # 31024
     0x7932: ("grid_frequency", "Grid Frequency", "Hz", "frequency", 0.1),    # 31026
-    # TODO (needs daytime / derivation): solar_power (PV ~0 at capture),
-    # load_power (no console register — derive: load = generation + grid_import - feedin),
-    # battery_temperature (register not yet identified).
+    # --- daily energy counters (32xxx), reset at local midnight (kWh) ---
+    0x7D05: ("battery_charge", "Battery Charge Energy", "kWh", "energy", 0.1),      # 32005 daily
+    0x7D08: ("battery_discharge", "Battery Discharge Energy", "kWh", "energy", 0.1),  # 32008 daily
+    0x7D0B: ("feedin", "Feed-in Energy", "kWh", "energy", 0.1),                     # 32011 daily
+    0x7D0E: ("grid_consumption", "Grid Consumption", "kWh", "energy", 0.1),         # 32014 daily — cost input
 }
 
 
@@ -145,6 +144,31 @@ def registers_to_values(start: int, regs) -> dict:
             key, _name, _unit, _dc, scale = KNOWN_HOLDING[reg]
             out[key] = round(s * scale, 2)
         out[f"r{reg:04x}"] = s
+    return out
+
+
+# Derived (virtual) sensors computed from the accumulated store, matching how
+# foxess-ha splits/derives them. Conventions: grid_power +export/−import,
+# battery_power +discharge/−charge.
+DERIVED = ("grid_consumption_power", "feedin_power", "load_power",
+           "battery_charge_power", "battery_discharge_power")
+
+
+def derive_virtual(values: dict) -> dict:
+    """Return derived power sensors from the latest live values (kW)."""
+    g = values.get("grid_power")
+    b = values.get("battery_power")
+    sol = values.get("solar_power")
+    out = {}
+    if g is not None:
+        out["grid_consumption_power"] = round(max(-g, 0.0), 3)  # import
+        out["feedin_power"] = round(max(g, 0.0), 3)             # export
+    if b is not None:
+        out["battery_charge_power"] = round(max(-b, 0.0), 3)
+        out["battery_discharge_power"] = round(max(b, 0.0), 3)
+    if None not in (g, b, sol):
+        # energy balance: load = solar + battery_discharge − grid_export + grid_import − battery_charge
+        out["load_power"] = round(sol + b - g, 3)
     return out
 
 
