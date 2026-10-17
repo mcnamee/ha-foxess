@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import DEFAULT_PORT, DOMAIN, SIGNAL_UPDATE
 from .protocol import derive_virtual
+from .schedule import build_force_charge
 from .server import FoxessServer, ensure_cert
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +41,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Could not bind port %s: %s", port, err)
         raise
     data[entry.entry_id] = server
+
+    async def handle_force_charge(call: ServiceCall) -> None:
+        writes = build_force_charge(
+            call.data["start"], call.data["end"], call.data["max_soc"],
+            call.data.get("fd_pwr", 10500), call.data.get("work_mode", "ForceCharge"),
+        )
+        await server.send_schedule(writes, dry_run=call.data.get("dry_run", True))
+
+    hass.services.async_register(
+        DOMAIN, "force_charge", handle_force_charge,
+        schema=vol.Schema({
+            vol.Required("start"): cv.string,          # "HH:MM"
+            vol.Required("end"): cv.string,            # "HH:MM"
+            vol.Required("max_soc"): vol.All(int, vol.Range(min=10, max=100)),
+            vol.Optional("fd_pwr", default=10500): vol.All(int, vol.Range(min=0, max=12000)),
+            vol.Optional("work_mode", default="ForceCharge"): cv.string,
+            vol.Optional("dry_run", default=True): cv.boolean,   # safety: must opt in to write
+        }),
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

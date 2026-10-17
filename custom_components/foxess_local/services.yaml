@@ -1,0 +1,56 @@
+force_charge:
+  name: Force charge
+  description: >
+    Write a grid force-charge schedule to the inverter (replays the cloud's
+    schedule write). Defaults to dry-run (logs only) — set dry_run false to
+    actually write.
+  fields:
+    start:
+      name: Start time
+      description: Window start, 24h "HH:MM".
+      required: true
+      example: "13:00"
+      selector:
+        text:
+    end:
+      name: End time
+      description: Window end, 24h "HH:MM" (must be after start, no midnight span).
+      required: true
+      example: "15:00"
+      selector:
+        text:
+    max_soc:
+      name: Max SoC
+      description: Charge target / cap, percent.
+      required: true
+      example: 100
+      selector:
+        number:
+          min: 10
+          max: 100
+          unit_of_measurement: "%"
+    fd_pwr:
+      name: Charge power ceiling
+      description: Max AC power drawn from the grid, watts.
+      required: false
+      example: 10500
+      selector:
+        number:
+          min: 0
+          max: 12000
+          unit_of_measurement: "W"
+    work_mode:
+      name: Work mode
+      description: Scheduler work mode.
+      required: false
+      default: ForceCharge
+      selector:
+        select:
+          options: [SelfUse, Feedin, Backup, ForceCharge, ForceDischarge]
+    dry_run:
+      name: Dry run
+      description: If on (default), only logs the frames; turn off to write to the inverter.
+      required: false
+      default: true
+      selector:
+        boolean:

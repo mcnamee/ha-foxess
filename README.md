@@ -89,9 +89,32 @@ To keep existing dashboards/automations working, once you remove `foxess-ha`
 rename these to adopt its entity_ids — notably `sensor.grid_consumption` →
 `sensor.foxess_grid_consumption` (the electricity-cost chain's only dependency).
 
+## Control — `foxess_local.force_charge` service
+
+Writes a grid force-charge schedule to the inverter by **template-replay**: it
+reproduces the exact 14-write func-10 sequence the cloud sends for a schedule
+change, substituting your window/SoC/mode into schedule block `0xBB8A`.
+
+Fields: `start` ("HH:MM"), `end` ("HH:MM"), `max_soc` (%), optional `fd_pwr` (W,
+default 10500), `work_mode` (default ForceCharge), and `dry_run`.
+
+**Safety:** `dry_run` defaults to **true** — the service only *logs* the frames
+it would send. Set `dry_run: false` to actually write. The builder is self-tested
+to reproduce a known captured schedule byte-for-byte. First live use should be a
+benign window, verified by reading the schedule back.
+
+Example (replaces the cloud `shell_command.foxess_force_charge` in your automations):
+
+```yaml
+service: foxess_local.force_charge
+data:
+  start: "13:00"
+  end: "14:59"
+  max_soc: 100
+  dry_run: false
+```
+
 ## Roadmap
 
-- Battery SoC as a continuously‑polled sensor (currently only in the login burst
-  frame; locating its holding register).
-- Control: work mode, min SoC, charge/discharge schedule (Modbus func‑10 writes,
-  format already captured).
+- Live write-test of the scheduler (currently dry-run-validated only).
+- Optional daily-load utility_meter if the load-total automation must persist.

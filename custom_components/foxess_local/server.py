@@ -84,6 +84,36 @@ class FoxessServer:
         self._key_path = key_path
         self._update_cb = update_cb
         self._server = None
+        self._active_send = None   # set while a logger is connected
+        self._write_txid = 0x7000
+
+    async def send_schedule(self, writes, dry_run=True):
+        """Send a schedule (list of (reg, [u16,...])) as func-10 writes.
+
+        dry_run=True (default) only builds and logs the frames — nothing is sent
+        to the inverter. Pass dry_run=False to actually write.
+        Returns a list of human-readable frame summaries.
+        """
+        from .protocol import build_write  # local import to avoid cycles
+
+        summaries = []
+        for reg, vals in writes:
+            self._write_txid = (self._write_txid + 1) & 0xFFFFFFFF
+            frame = build_write(self._write_txid, reg, vals)
+            summaries.append(f"reg=0x{reg:04x} count={len(vals)} bytes={len(frame)}")
+        if dry_run:
+            _LOGGER.warning("DRY-RUN schedule (%d writes, NOT sent): %s",
+                            len(writes), summaries)
+            return summaries
+        if self._active_send is None:
+            raise RuntimeError("logger not connected — cannot write schedule")
+        self._write_txid = 0x7000
+        for reg, vals in writes:
+            self._write_txid = (self._write_txid + 1) & 0xFFFFFFFF
+            await self._active_send(build_write(self._write_txid, reg, vals))
+            await asyncio.sleep(0.3)
+        _LOGGER.warning("schedule WRITTEN to inverter (%d writes)", len(writes))
+        return summaries
 
     async def start(self):
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -110,6 +140,8 @@ class FoxessServer:
             async with write_lock:
                 writer.write(data)
                 await writer.drain()
+
+        self._active_send = send
 
         async def poller():
             txid = 0x1000
@@ -147,5 +179,6 @@ class FoxessServer:
             _LOGGER.debug("connection error: %s", err)
         finally:
             poll_task.cancel()
+            self._active_send = None
             writer.close()
             _LOGGER.info("logger disconnected (%s)", peer)
