@@ -79,6 +79,32 @@ def build_read(txid: int, start: int, count: int, func: int = 0x03) -> bytes:
     return build_frame(DATA, body)
 
 
+def build_write(txid: int, start: int, values: list[int], func: int = 0x10) -> bytes:
+    """Func-10 (write-multiple-registers) frame, wrapped like the cloud's writes.
+    `values` are 16-bit register values written from `start`.
+
+    NOT USED FOR LIVE WRITES until the schedule register layout is fully verified
+    against a complete capture of a *known* schedule (writing a wrong layout to a
+    battery inverter can mis-set charging). Kept here as reviewed plumbing.
+    """
+    payload = b"".join(struct.pack(">H", v & 0xFFFF) for v in values)
+    modbus = bytes([0x01, func]) + struct.pack(">HH", start, len(values)) + bytes([len(payload)]) + payload
+    body = bytes([0x12]) + struct.pack(">I", txid) + bytes([0x00, len(modbus)]) + modbus
+    return build_frame(DATA, body)
+
+
+# --- Scheduler (control) — PARTIAL, pending full known-schedule capture ---
+# A schedule change writes ~14 func-10 blocks across 0xBB80-0xBEFA + 0xDEA8.
+# The 8x schedule groups are 20 bytes each; decoded fields from empty slots:
+#   byte 8    = maxSoc            byte 9     = minSocOnGrid
+#   byte 11   = fdSoc            byte 12-13 = fdPwr (BE)
+#   byte 19   = workMode         bytes 0-6  = start/end times (TBD: positions)
+# workMode enum (API order): SelfUse, Feedin, Backup, ForceCharge, ForceDischarge.
+# TODO: confirm time-field byte positions, workMode numeric value, and the full
+# multi-block layout from a captured known schedule before enabling writes.
+SCHEDULE_ENABLE_REG = 0x7B80  # placeholder; confirm from capture (0xBB80 was write target)
+
+
 def control_reply(body: bytes) -> bytes | None:
     """Reply the real cloud would send for a logger control frame, or None."""
     ctype = body[0]
