@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FoxESS Local",
+        "description": "Runs a local server that the FoxESS Wi-Fi logger connects to instead of the cloud. Point the logger's cloud IP (8.209.116.72:14431) at this Home Assistant host with a gateway Dest-NAT rule.",
+        "data": {
+          "port": "Listen port (must match the Dest-NAT target; default 14431)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "FoxESS Local is already set up."
+    }
+  }
+}

@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.pem
+.DS_Store
+custom_components/foxess_local/run_standalone.py
