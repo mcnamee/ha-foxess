@@ -65,11 +65,20 @@ Note: blocking the inverter's internet may affect grid‑compliance features
 
 ## Entities
 
-- `sensor.battery_power` (W, negative = charging), `sensor.generation_power`,
-  `sensor.grid_voltage`, `sensor.grid_frequency`.
-- Raw `r7918…r7947` register sensors (disabled by default, category
-  *diagnostic*) — enable them, watch HA history while you change load/solar, and
-  tell which register is which. Confirmed ones get promoted to named sensors.
+Confirmed live sensors (FoxESS KH, 1.33+ firmware; func-03 holding registers):
+
+- `battery_soc` (%), `battery_power` (kW, negative = charging), `battery_voltage`
+  (V), `battery_current` (A), `battery_temperature` (°C)
+- `inverter_power` (kW), `load_power` (kW), `grid_voltage` (V), `grid_frequency` (Hz)
+
+Still being resolved (PV power and grid CT sit at 39xxx on 1.33+, which this tunnel
+can't read — resolved via a short correlation session or derived):
+
+- `solar_power`, `grid_power` (import/export), and cumulative kWh energy totals.
+
+Raw `r7918…r7957` register sensors (disabled by default, *diagnostic*) are also
+exposed — enable them and watch HA history while you change load/solar to confirm
+any remaining mappings.
 
 ## Roadmap
 

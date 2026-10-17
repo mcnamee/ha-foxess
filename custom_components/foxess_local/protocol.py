@@ -24,15 +24,30 @@ CTRL_END = 0xE7
 DATA_END = 0xF7
 
 # Live telemetry: Modbus func 03 (holding) at base 0x7918 (=31000), 0x10 at a time.
+# Cover 31000-31063 so the pre-1.33 grid/load mirror registers (31050/31054) are
+# also read for cross-checking.
 LIVE_BASE = 0x7918
-LIVE_BLOCKS = [(0x03, 0x7918, 0x10), (0x03, 0x7928, 0x10), (0x03, 0x7938, 0x10)]
+LIVE_BLOCKS = [
+    (0x03, 0x7918, 0x10),  # 31000-31015
+    (0x03, 0x7928, 0x10),  # 31016-31031
+    (0x03, 0x7938, 0x10),  # 31032-31047
+    (0x03, 0x7948, 0x10),  # 31048-31063
+]
 
-# Confirmed live holding registers: reg -> (key, name, unit, device_class, scale)
+# Holding registers for a FoxESS KH on 1.33+ firmware (nathanmarlor/foxess_modbus
+# community map), confirmed against live capture. reg -> (key, name, unit, class, scale).
+# NOTE: PV power and grid CT live at 39xxx on 1.33+ (NOT readable via this tunnel);
+# solar_power and grid_power are resolved during the correlation session.
 KNOWN_HOLDING = {
-    0x7920: ("battery_power", "Battery Power", "W", "power", 1),   # neg = charging
-    0x7921: ("pgen", "Generation Power", "W", "power", 1),
-    0x7922: ("grid_voltage", "Grid Voltage", "V", "voltage", 0.1),
-    0x7932: ("grid_frequency", "Grid Frequency", "Hz", "frequency", 0.1),
+    0x791E: ("grid_voltage", "Grid Voltage", "V", "voltage", 0.1),         # 31006
+    0x7920: ("inverter_power", "Inverter Power", "kW", "power", 0.001),     # 31008 S_WORD
+    0x7928: ("load_power", "Load Power", "kW", "power", 0.001),             # 31016 S_WORD (verify)
+    0x792C: ("battery_voltage", "Battery Voltage", "V", "voltage", 0.1),   # 31020
+    0x792D: ("battery_current", "Battery Current", "A", "current", 0.1),   # 31021 S_WORD
+    0x792E: ("battery_power", "Battery Power", "kW", "power", 0.001),       # 31022 S_WORD neg=charge
+    0x7930: ("battery_soc", "Battery SoC", "%", "battery", 1),             # 31024 (scale verify: 1 vs 0.1)
+    0x7931: ("battery_temperature", "Battery Temperature", "°C", "temperature", 0.1),  # 31025 S_WORD
+    0x7932: ("grid_frequency", "Grid Frequency", "Hz", "frequency", 0.1),  # 31026 (candidate)
 }
 
 
