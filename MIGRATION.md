@@ -113,12 +113,24 @@ service coerces the rendered strings to numbers:
   response_variable: charge_result
 ```
 
-> **Check the response handling.** The old shell command put the script's text
-> output into `charge_result`; the service instead returns a dict
-> (`{written, schedule}` on a write, or `{dry_run, ...}`). If any later step in
-> that automation inspects `charge_result` as text (e.g. to confirm success or
-> set `input_datetime.foxess_charge_scheduled_at`), update it to read the dict —
-> e.g. treat a non-null `charge_result.schedule` as success.
+**Fix the success gate.** This automation has a step right after the write that
+checks the old shell exit code — change it to check the service's read-back:
+
+```yaml
+# was ("Stop here unless the inverter accepted the schedule"):
+condition: template
+value_template: "{{ charge_result.returncode | int(1) == 0 }}"
+# becomes:
+condition: template
+value_template: "{{ charge_result.schedule is not none }}"
+```
+
+`charge_result.schedule` is the schedule read back from the inverter; non-`none`
+means it accepted and stored it. If the write fails (e.g. logger offline) the
+service raises, so the automation stops before this step and your retry queue
+tries again — same net behaviour as a non-zero exit code. The following
+"Mark today as scheduled" step (`input_datetime.foxess_charge_scheduled_at`) and
+the top guard condition are unchanged.
 
 ## 6. Recreate the daily Load total
 
