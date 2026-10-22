@@ -1,0 +1,31 @@
+# Recreates foxess-ha's daily "Load" energy (sensor.foxess_load), which has no
+# direct register on this inverter. It integrates the derived load_power (kW)
+# into energy (kWh) and resets it daily with a utility meter.
+#
+# Enable packages once in configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+# then put this file in <config>/packages/ and restart HA.
+#
+# NOTE ON TIMING: the utility_meter below is named `foxess_load`, so it becomes
+# sensor.foxess_load. While the cloud `foxess-ha` integration is still installed
+# it already owns that id, so HA would create sensor.foxess_load_2 instead.
+# Add this package AFTER you remove foxess-ha (see MIGRATION.md), or rename later.
+#
+# Also: this references sensor.foxess_load_power. Use whatever id your local
+# integration actually created (likely sensor.foxess_kh_local_load_power) OR the
+# id you renamed it to (sensor.foxess_load_power). Adjust the source below to match.
+
+sensor:
+  - platform: integration
+    name: FoxESS Load Energy
+    unique_id: foxess_local_load_energy
+    source: sensor.foxess_load_power   # kW -> integrated to kWh
+    method: left
+    unit_time: h
+    round: 3
+
+utility_meter:
+  foxess_load:                          # -> sensor.foxess_load (daily load kWh)
+    source: sensor.foxess_load_energy
+    cycle: daily
