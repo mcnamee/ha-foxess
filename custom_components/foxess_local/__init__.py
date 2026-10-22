@@ -58,8 +58,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=vol.Schema({
             vol.Required("start"): cv.string,          # "HH:MM"
             vol.Required("end"): cv.string,            # "HH:MM"
-            vol.Required("max_soc"): vol.All(int, vol.Range(min=10, max=100)),
-            vol.Optional("fd_pwr", default=10500): vol.All(int, vol.Range(min=0, max=12000)),
+            # Coerce so templated automations (which render to strings) work.
+            vol.Required("max_soc"): vol.All(vol.Coerce(int), vol.Range(min=10, max=100)),
+            vol.Optional("fd_pwr", default=10500): vol.All(vol.Coerce(int), vol.Range(min=0, max=12000)),
             vol.Optional("work_mode", default="ForceCharge"): cv.string,
             vol.Optional("dry_run", default=True): cv.boolean,   # safety: must opt in to write
         }),

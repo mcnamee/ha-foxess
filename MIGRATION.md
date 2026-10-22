@@ -72,7 +72,11 @@ untouched. Expect at most a small gap covering the swap.
 
 ## 5. Swap the scheduler automations to the local service
 
-In each force-charge automation, replace the action:
+In each force-charge automation, replace the `shell_command.foxess_force_charge`
+action with `foxess_local.force_charge`, mapping the CLI args to data fields
+(`--start`→`start`, `--end`→`end`, `--max-soc`→`max_soc`), and add `dry_run: false`.
+
+**a) "Force Charge Battery - Weekend Free"** (static args):
 
 ```yaml
 # was:
@@ -86,6 +90,35 @@ In each force-charge automation, replace the action:
     max_soc: 100
     dry_run: false
 ```
+
+**b) "Force Charge Battery - Off Peak (Solcast)"** (templated args). The computed
+variables (`start_time_str`, `window_end`, `max_soc`) carry straight over — the
+service coerces the rendered strings to numbers:
+
+```yaml
+# was:
+- alias: Write the charge window to the inverter
+  action: shell_command.foxess_force_charge
+  data:
+    args: "--start {{ start_time_str }} --end {{ window_end }} --max-soc {{ max_soc }}"
+  response_variable: charge_result
+# becomes:
+- alias: Write the charge window to the inverter
+  action: foxess_local.force_charge
+  data:
+    start: "{{ start_time_str }}"
+    end: "{{ window_end }}"
+    max_soc: "{{ max_soc }}"
+    dry_run: false
+  response_variable: charge_result
+```
+
+> **Check the response handling.** The old shell command put the script's text
+> output into `charge_result`; the service instead returns a dict
+> (`{written, schedule}` on a write, or `{dry_run, ...}`). If any later step in
+> that automation inspects `charge_result` as text (e.g. to confirm success or
+> set `input_datetime.foxess_charge_scheduled_at`), update it to read the dict —
+> e.g. treat a non-null `charge_result.schedule` as success.
 
 ## 6. Recreate the daily Load total
 
