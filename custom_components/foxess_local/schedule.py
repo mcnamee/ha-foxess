@@ -25,7 +25,36 @@ import os
 SCHEDULE_BLOCK = 0xBB8A
 WORK_MODES = {"SelfUse": 0, "Feedin": 1, "Backup": 2,
               "ForceCharge": 3, "ForceDischarge": 4}
+WORK_MODE_NAMES = {v: k for k, v in WORK_MODES.items()}
+# Reading the 80-reg schedule block back, in func-03 0x10 chunks.
+SCHEDULE_READ_CHUNKS = [(0x03, SCHEDULE_BLOCK + i * 0x10, 0x10) for i in range(5)]
 _TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "schedule_template.json")
+
+
+def parse_schedule(regs):
+    """regs = 80 u16 values of block 0xBB8A -> list of enabled group dicts."""
+    groups = []
+    for gi in range(8):
+        g = regs[gi * 10: gi * 10 + 10]
+        if len(g) < 10 or not g[0]:        # reg0 = enable flag
+            continue
+        groups.append({
+            "group": gi + 1,
+            "mode": WORK_MODE_NAMES.get(g[8], f"mode{g[8]}"),
+            "start": f"{g[1] >> 8:02d}:{g[1] & 0xFF:02d}",
+            "end": f"{g[2] >> 8:02d}:{g[2] & 0xFF:02d}",
+            "max_soc": g[5],
+            "min_soc": g[4] & 0xFF,
+            "fd_pwr": g[6],
+        })
+    return groups
+
+
+def schedule_summary(groups):
+    if not groups:
+        return "no active schedule"
+    return "; ".join(
+        f"{x['mode']} {x['start']}-{x['end']}→{x['max_soc']}%" for x in groups)
 
 
 def load_template():

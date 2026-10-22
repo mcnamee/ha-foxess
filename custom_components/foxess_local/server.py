@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import ssl
+import struct
 from datetime import datetime, timedelta
 
 try:  # package import (inside Home Assistant)
@@ -86,6 +87,40 @@ class FoxessServer:
         self._server = None
         self._active_send = None   # set while a logger is connected
         self._write_txid = 0x7000
+        self._od_txid = 0x3000     # on-demand read txids
+        self._pending_reads = {}   # txid -> asyncio.Future
+
+    async def _request(self, func, start, count):
+        """On-demand register read; returns list of u16 or None."""
+        if self._active_send is None:
+            return None
+        self._od_txid = (self._od_txid + 1) & 0xFFFFFFFF
+        tx = self._od_txid
+        fut = asyncio.get_event_loop().create_future()
+        self._pending_reads[tx] = fut
+        try:
+            await self._active_send(build_read(tx, start, count, func))
+            return await asyncio.wait_for(fut, timeout=6)
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+            self._pending_reads.pop(tx, None)
+            return None
+
+    async def read_schedule(self):
+        """Read block 0xBB8A back and return {groups, summary} or None."""
+        from .schedule import SCHEDULE_READ_CHUNKS, parse_schedule, schedule_summary
+
+        regs = []
+        for func, start, count in SCHEDULE_READ_CHUNKS:
+            chunk = await self._request(func, start, count)
+            if not chunk:
+                return None
+            regs.extend(chunk)
+            await asyncio.sleep(0.2)
+        groups = parse_schedule(regs)
+        sched = {"groups": groups, "summary": schedule_summary(groups)}
+        self._update_cb({"schedule_summary": sched["summary"],
+                         "schedule_groups": groups})
+        return sched
 
     async def send_schedule(self, writes, dry_run=True):
         """Send a schedule (list of (reg, [u16,...])) as func-10 writes.
@@ -113,7 +148,12 @@ class FoxessServer:
             await self._active_send(build_write(self._write_txid, reg, vals))
             await asyncio.sleep(0.3)
         _LOGGER.warning("schedule WRITTEN to inverter (%d writes)", len(writes))
-        return summaries
+        # read the schedule back so the result is verifiable without the app
+        await asyncio.sleep(0.5)
+        sched = await self.read_schedule()
+        if sched:
+            _LOGGER.warning("schedule read-back: %s", sched["summary"])
+        return {"written": len(writes), "schedule": sched}
 
     async def start(self):
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -145,6 +185,7 @@ class FoxessServer:
 
         async def poller():
             txid = 0x1000
+            cycle = 0
             await asyncio.sleep(8)
             while not writer.is_closing():
                 for func, start, count in LIVE_BLOCKS:
@@ -155,6 +196,13 @@ class FoxessServer:
                     except Exception:  # noqa: BLE001
                         return
                     await asyncio.sleep(0.5)
+                # refresh the current schedule periodically (first cycle + ~5 min)
+                if cycle % 20 == 0:
+                    try:
+                        await self.read_schedule()
+                    except Exception:  # noqa: BLE001
+                        pass
+                cycle += 1
                 await asyncio.sleep(POLL_INTERVAL)
 
         poll_task = asyncio.create_task(poller())
@@ -169,10 +217,21 @@ class FoxessServer:
                         if reply is not None:
                             await send(build_frame(CTRL, reply))
                     elif body and body[0] == 0x91:
-                        res = decode_read_response(body, pending)
-                        if res and res[1] != "EXCEPTION" and res[0] is not None:
-                            values = registers_to_values(res[0], res[1])
-                            self._update_cb(values)
+                        tx = struct.unpack(">I", body[1:5])[0]
+                        fut = self._pending_reads.pop(tx, None)
+                        if fut is not None:
+                            mb = body[7:]
+                            regs = []
+                            if len(mb) >= 3 and mb[1] in (0x03, 0x04):
+                                data = mb[3 : 3 + mb[2]]
+                                regs = [int.from_bytes(data[i : i + 2], "big")
+                                        for i in range(0, len(data) - 1, 2)]
+                            if not fut.done():
+                                fut.set_result(regs)
+                        else:
+                            res = decode_read_response(body, pending)
+                            if res and res[1] != "EXCEPTION" and res[0] is not None:
+                                self._update_cb(registers_to_values(res[0], res[1]))
         except (asyncio.CancelledError, ConnectionError):
             pass
         except Exception as err:  # noqa: BLE001

@@ -36,6 +36,8 @@ async def async_setup_entry(
     for reg in range(RAW_REG_START, RAW_REG_END + 1):
         key = f"r{reg:04x}"
         entities.append(FoxessSensor(key, key, None, None, diagnostic=True))
+    # current schedule (state = summary, attributes = parsed groups)
+    entities.append(FoxessScheduleSensor())
     async_add_entities(entities)
 
 
@@ -76,4 +78,34 @@ class FoxessSensor(SensorEntity):
     def _handle_update(self, store: dict) -> None:
         if self._key in store:
             self._attr_native_value = store[self._key]
+            self.async_write_ha_state()
+
+
+class FoxessScheduleSensor(SensorEntity):
+    """Current inverter schedule: state = summary, attributes = parsed groups."""
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_name = "Schedule"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_unique_id = f"{DOMAIN}_schedule"
+
+    _attr_device_info = {
+        "identifiers": {(DOMAIN, "kh")},
+        "name": "FoxESS KH (local)",
+        "manufacturer": "FoxESS",
+        "model": "KH9.9",
+    }
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._handle_update)
+        )
+        self._handle_update(self.hass.data.get(DOMAIN, {}).get("values", {}))
+
+    @callback
+    def _handle_update(self, store: dict) -> None:
+        if "schedule_summary" in store:
+            self._attr_native_value = store["schedule_summary"][:255]
+            self._attr_extra_state_attributes = {"groups": store.get("schedule_groups", [])}
             self.async_write_ha_state()

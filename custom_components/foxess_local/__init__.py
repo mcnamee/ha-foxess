@@ -6,7 +6,7 @@ import logging
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -42,12 +42,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
     data[entry.entry_id] = server
 
-    async def handle_force_charge(call: ServiceCall) -> None:
+    async def handle_force_charge(call: ServiceCall) -> dict:
         writes = build_force_charge(
             call.data["start"], call.data["end"], call.data["max_soc"],
             call.data.get("fd_pwr", 10500), call.data.get("work_mode", "ForceCharge"),
         )
-        await server.send_schedule(writes, dry_run=call.data.get("dry_run", True))
+        result = await server.send_schedule(writes, dry_run=call.data.get("dry_run", True))
+        # normalise to a dict so the action can return a response
+        if isinstance(result, dict):
+            return {"dry_run": False, **result}
+        return {"dry_run": True, "would_write": len(writes), "frames": result}
 
     hass.services.async_register(
         DOMAIN, "force_charge", handle_force_charge,
@@ -59,6 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             vol.Optional("work_mode", default="ForceCharge"): cv.string,
             vol.Optional("dry_run", default=True): cv.boolean,   # safety: must opt in to write
         }),
+        supports_response=SupportsResponse.OPTIONAL,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

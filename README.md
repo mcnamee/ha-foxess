@@ -100,8 +100,20 @@ default 10500), `work_mode` (default ForceCharge), and `dry_run`.
 
 **Safety:** `dry_run` defaults to **true** — the service only *logs* the frames
 it would send. Set `dry_run: false` to actually write. The builder is self-tested
-to reproduce a known captured schedule byte-for-byte. First live use should be a
-benign window, verified by reading the schedule back.
+to reproduce a known captured schedule byte-for-byte, and the write path is
+live-verified against the inverter.
+
+**Verifying offline (no app/cloud needed):**
+
+- After a write, the service **reads the schedule back** from the inverter and
+  returns/logs it — so you get confirmation without the FoxESS app.
+- A **`Schedule` sensor** (`sensor.foxess_kh_local_schedule`) shows the current
+  active schedule as its state (e.g. `ForceCharge 13:00-14:00→100%`), with the
+  parsed groups in its attributes — put it on a dashboard. It refreshes
+  periodically and immediately after a `force_charge`.
+- The ultimate check is behavioural: during a scheduled window, watch
+  `battery_power` (goes negative = charging), `grid_power` (importing) and
+  `battery_soc` climbing — all from local sensors.
 
 Example (replaces the cloud `shell_command.foxess_force_charge` in your automations):
 
