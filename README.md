@@ -114,7 +114,19 @@ data:
   dry_run: false
 ```
 
-## Roadmap
+## Status / known limitations
 
-- Live write-test of the scheduler (currently dry-run-validated only).
-- Optional daily-load utility_meter if the load-total automation must persist.
+The integration is feature-complete: offline keep-alive, full telemetry
+(including the daily energy counters that drive electricity-cost calcs), derived
+power sensors, and the `force_charge` scheduler. The scheduler write path is
+**live-verified** — a func-10 write to the schedule block is accepted by the
+inverter, persists, and reads back correctly. A daily-load helper is provided in
+`packages/`.
+
+Remaining minor item:
+
+- A schedule change writes 14 blocks (the `force_charge` service replays exactly
+  what the cloud sent). The capture didn't include a separate "enable" write, so
+  on your **first real `force_charge`**, confirm in the app that the new schedule
+  becomes active; if it doesn't, an enable step may be needed. (The write
+  mechanism itself is proven.)
