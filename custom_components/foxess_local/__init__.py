@@ -16,7 +16,7 @@ from .schedule import build_force_charge
 from .server import FoxessServer, ensure_cert
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.NUMBER]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -43,9 +43,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data[entry.entry_id] = server
 
     async def handle_force_charge(call: ServiceCall) -> dict:
+        # preserve the current standard (Self-Use) max SoC so a force-charge
+        # write doesn't reset it back to the template's default
+        groups = store.get("schedule_groups") or []
+        self_use = next((g.get("max_soc") for g in groups
+                         if g.get("mode") == "SelfUse"), None)
         writes = build_force_charge(
             call.data["start"], call.data["end"], call.data["max_soc"],
             call.data.get("fd_pwr", 10500), call.data.get("work_mode", "ForceCharge"),
+            self_use_max_soc=self_use,
         )
         result = await server.send_schedule(writes, dry_run=call.data.get("dry_run", True))
         # normalise to a dict so the action can return a response

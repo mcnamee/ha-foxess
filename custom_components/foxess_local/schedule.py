@@ -69,9 +69,26 @@ def _hhmm(s: str) -> int:
     return (h << 8) | m
 
 
+def set_self_use_max_soc_in_block(regs: list, max_soc: int) -> bool:
+    """In a 0xBB8A 80-register block, set maxSoc (offset 5) of each enabled
+    Self-Use group. Mutates `regs`; returns True if any group changed."""
+    changed = False
+    for gi in range(8):
+        base = gi * 10
+        if len(regs) < base + 10:
+            break
+        if regs[base] and regs[base + 8] == WORK_MODES["SelfUse"]:  # enabled + SelfUse
+            regs[base + 5] = int(max_soc)
+            changed = True
+    return changed
+
+
 def build_force_charge(start: str, end: str, max_soc: int,
-                       fd_pwr: int = 10500, work_mode: str = "ForceCharge"):
-    """Return [(reg, [u16,...]), ...] for all 14 writes, group1 of 0xBB8A set."""
+                       fd_pwr: int = 10500, work_mode: str = "ForceCharge",
+                       self_use_max_soc: int | None = None):
+    """Return [(reg, [u16,...]), ...] for all 14 writes, group1 of 0xBB8A set.
+    If `self_use_max_soc` is given, the Self-Use group's cap is set too, so a
+    force-charge write doesn't reset the standard max SoC back to the template's."""
     if work_mode not in WORK_MODES:
         raise ValueError(f"bad work_mode {work_mode}")
     writes = []
@@ -86,6 +103,8 @@ def build_force_charge(start: str, end: str, max_soc: int,
             g[6] = int(fd_pwr)
             g[8] = WORK_MODES[work_mode]
             # g[3], g[4] (fdSoc/minSoc), g[7], g[9] kept from the template
+            if self_use_max_soc is not None:
+                set_self_use_max_soc_in_block(vals, int(self_use_max_soc))
         writes.append((w["reg"], vals))
     return writes
 

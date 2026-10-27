@@ -89,6 +89,14 @@ To keep existing dashboards/automations working, once you remove `foxess-ha`
 rename these to adopt its entity_ids — notably `sensor.grid_consumption` →
 `sensor.foxess_grid_consumption` (the electricity-cost chain's only dependency).
 
+## Control — Standard Max SoC (number)
+
+`number.…_standard_max_soc` sets the cap the battery charges to **outside**
+force-charge windows — i.e. the max SoC of the all-day Self-Use schedule group.
+Drag it from 100 to e.g. 80 and the integration rewrites the Self-Use group's
+`maxSoc`, preserving any force-charge window. Force-charge runs still reach their
+own target (they set the force-charge group's `maxSoc` independently).
+
 ## Control — `foxess_local.force_charge` service
 
 Writes a grid force-charge schedule to the inverter by **template-replay**: it

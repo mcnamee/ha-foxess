@@ -105,9 +105,9 @@ class FoxessServer:
             self._pending_reads.pop(tx, None)
             return None
 
-    async def read_schedule(self):
-        """Read block 0xBB8A back and return {groups, summary} or None."""
-        from .schedule import SCHEDULE_READ_CHUNKS, parse_schedule, schedule_summary
+    async def _read_schedule_block(self):
+        """Read the full 80-register 0xBB8A block, or None."""
+        from .schedule import SCHEDULE_READ_CHUNKS
 
         regs = []
         for func, start, count in SCHEDULE_READ_CHUNKS:
@@ -116,11 +116,42 @@ class FoxessServer:
                 return None
             regs.extend(chunk)
             await asyncio.sleep(0.2)
+        return regs
+
+    async def read_schedule(self):
+        """Read block 0xBB8A back and return {groups, summary} or None."""
+        from .schedule import parse_schedule, schedule_summary
+
+        regs = await self._read_schedule_block()
+        if regs is None:
+            return None
         groups = parse_schedule(regs)
         sched = {"groups": groups, "summary": schedule_summary(groups)}
         self._update_cb({"schedule_summary": sched["summary"],
                          "schedule_groups": groups})
         return sched
+
+    async def set_self_use_max_soc(self, max_soc: int) -> bool:
+        """Read the current schedule, change the Self-Use group's max SoC, write
+        it back (preserving any force-charge window). Returns success."""
+        from .schedule import (SCHEDULE_BLOCK, set_self_use_max_soc_in_block)
+
+        if self._active_send is None:
+            _LOGGER.error("logger not connected — cannot set max SoC")
+            return False
+        regs = await self._read_schedule_block()
+        if regs is None:
+            _LOGGER.error("could not read schedule block to set max SoC")
+            return False
+        if not set_self_use_max_soc_in_block(regs, int(max_soc)):
+            _LOGGER.warning("no enabled Self-Use group found; max SoC not set")
+            return False
+        self._write_txid = (self._write_txid + 1) & 0xFFFFFFFF
+        await self._active_send(build_write(self._write_txid, SCHEDULE_BLOCK, regs))
+        _LOGGER.warning("standard (Self-Use) max SoC set to %s%%", max_soc)
+        await asyncio.sleep(0.5)
+        await self.read_schedule()  # refresh the schedule sensor
+        return True
 
     async def send_schedule(self, writes, dry_run=True):
         """Send a schedule (list of (reg, [u16,...])) as func-10 writes.
