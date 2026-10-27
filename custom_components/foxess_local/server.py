@@ -20,6 +20,7 @@ try:  # package import (inside Home Assistant)
         LIVE_BLOCKS,
         build_frame,
         build_read,
+        build_write,
         control_reply,
         decode_read_response,
         registers_to_values,
@@ -32,6 +33,7 @@ except ImportError:  # standalone run (Mac testing)
         LIVE_BLOCKS,
         build_frame,
         build_read,
+        build_write,
         control_reply,
         decode_read_response,
         registers_to_values,
@@ -160,8 +162,6 @@ class FoxessServer:
         to the inverter. Pass dry_run=False to actually write.
         Returns a list of human-readable frame summaries.
         """
-        from .protocol import build_write  # local import to avoid cycles
-
         summaries = []
         for reg, vals in writes:
             self._write_txid = (self._write_txid + 1) & 0xFFFFFFFF
